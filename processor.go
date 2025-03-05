@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	similarityThreshold = 0.72
+	similarityThreshold = 0.8
 )
 
 var (
@@ -26,9 +26,10 @@ type maybeIncorrectMovieError struct {
 	year      string
 	searchAs  string
 	imdbTitle string
+	imdbID    string
 }
 
-func (e maybeIncorrectMovieError) Error() string {
+func (e *maybeIncorrectMovieError) Error() string {
 	return "maybe incorrect movie"
 }
 
@@ -85,11 +86,12 @@ func (p *processor) processMovie(m *movie) error {
 		similarityX := smetrics.Jaro(searchAs, movieInfo.Title)
 		similarityY := smetrics.Jaro(originalName, movieInfo.Title)
 		if similarityX < similarityThreshold && similarityY < similarityThreshold {
-			log.Printf("'%s' (%s) searched as '%s', found as IMDb title - '%s'. Not rated because potentially incorrect\n", originalName, m.Year, searchAs, movieInfo.Title)
+			log.Printf("'%s' (%s) searched as '%s', found as IMDb title - '%s', link - https://www.imdb.com/title/%s. Not rated because potentially incorrect\n",
+				originalName, m.Year, searchAs, movieInfo.Title, movieInfo.IMDbID)
 			return err
 		}
 
-		retrySearchErr = maybeIncorrectMovieError{title: originalName, year: m.Year, searchAs: searchAs, imdbTitle: movieInfo.Title}
+		retrySearchErr = &maybeIncorrectMovieError{title: originalName, year: m.Year, searchAs: searchAs, imdbTitle: movieInfo.Title, imdbID: movieInfo.IMDbID}
 		log.Printf("'%s' (%s) searched as '%s', found IMDb title - '%s'. Check if it's correct\n", originalName, m.Year, searchAs, movieInfo.Title)
 	}
 
@@ -126,9 +128,11 @@ func getErrorMsg(err error, locale string) string {
 	case errors.Is(err, errOMDbApiLimit) && locale == localeRu:
 		return "Превышен лимит запросов к OMDb. Попробуй повторить завтра"
 	case errors.As(err, &mivErr) && locale == localeEn:
-		return fmt.Sprintf("Rating is added to IMDb, but check if movie is correct. Kinopoisk title - '%s' (%s), searched as '%s', IMDb title - '%s'", mivErr.title, mivErr.year, mivErr.searchAs, mivErr.imdbTitle)
+		return fmt.Sprintf("Rating is added to IMDb, but check if movie is correct. Kinopoisk title - '%s' (%s), searched as '%s', IMDb title - '%s', Link - https://www.imdb.com/title/%s",
+			mivErr.title, mivErr.year, mivErr.searchAs, mivErr.imdbTitle, mivErr.imdbID)
 	case errors.As(err, &mivErr) && locale == localeRu:
-		return fmt.Sprintf("Рейтинг проставлен на IMDb, но нужно убедиться, что оценен корректный фильм. Название на КП - '%s' (%s), поисковый запрос '%s', фильм на IMDb - '%s'", mivErr.title, mivErr.year, mivErr.searchAs, mivErr.imdbTitle)
+		return fmt.Sprintf("Рейтинг проставлен на IMDb, но нужно убедиться, что оценен корректный фильм. Название на КП - '%s' (%s), поисковый запрос '%s', фильм на IMDb - '%s', ссылка - https://www.imdb.com/title/%s",
+			mivErr.title, mivErr.year, mivErr.searchAs, mivErr.imdbTitle, mivErr.imdbID)
 	default:
 		return err.Error()
 	}
